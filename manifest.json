@@ -1,0 +1,24 @@
+{
+  "name": "Flash Share Pro",
+  "short_name": "Flash Share",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f9fafb",
+  "theme_color": "#10b981",
+  "description": "تطبيق لنقل الملفات بسرعة وبشكل مباشر بين الأجهزة باستخدام P2P",
+  "orientation": "portrait",
+  "icons":[
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/19038/19038172.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/19038/19038172.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
