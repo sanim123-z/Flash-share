@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Flash Share Pro</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta id="meta-theme-color" name="theme-color" content="#f9fafb">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Flash Share">
+    
+    <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/19038/19038172.png">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/19038/19038172.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        const colors =['green', 'emerald', 'teal', 'cyan', 'sky', 'blue', 'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose', 'red', 'orange', 'amber', 'lime'];
+        const safelist =[];
+        colors.forEach(c => {
+            safelist.push(`bg-${c}-500`, `bg-${c}-100`, `bg-${c}-50`, `bg-${c}-600`, `bg-${c}-900`, `text-${c}-500`, `text-${c}-600`, `text-${c}-700`, `border-${c}-700`, `border-${c}-500`, `border-${c}-200`, `border-${c}-800`, `ring-${c}-500`);
+        });
+
+        tailwind.config = { darkMode: 'class', safelist: safelist, theme: { extend: { fontFamily: { rubik:['Rubik', 'sans-serif'] } } } }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+    <style>
+        body { font-family: 'Rubik', sans-serif; overflow: hidden; background-color: #f9fafb; margin: 0; user-select: none; }
+        .dark body { background-color: #111827; }
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade { animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        #reader { border: none !important; border-radius: 1rem; overflow: hidden; }
+        #reader video { border-radius: 1rem; object-fit: cover; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('Service Worker Registered'))
+                    .catch(err => console.error('Service Worker Error', err));
+            });
+        }
+    </script>
+
+    <script type="text/babel">
+        // دوال تخزين آمنة
+        const safeSetStorage = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {} };
+        const safeGetStorage = (key, defaultValue) => { 
+            try { const val = localStorage.getItem(key); return val ? JSON.parse(val) : defaultValue; } 
+            catch (e) { return defaultValue; } 
+        };
+
+        class ErrorBoundary extends React.Component {
+            constructor(props) { super(props); this.state = { hasError: false, errorInfo: null }; }
+            static getDerivedStateFromError(error) { return { hasError: true, errorInfo: error.message }; }
+            render() {
+                if (this.state.hasError) return (
+                    <div className="p-8 text-center text-red-600 font-bold bg-white h-screen flex flex-col items-center justify-center">
+                        <h1 className="text-2xl mb-4">حدث خطأ داخلي</h1>
+                        <p className="text-gray-500" dir="ltr">{this.state.errorInfo}</p>
+                    </div>
+                );
+                return this.props.children; 
+            }
+        }
+
+        const { useState, useEffect, useRef } = React;
+        const generateShortID = () => Math.random().toString(36).substr(2, 5).toUpperCase();
+        const THEME_COLORS =['green', 'emerald', 'teal', 'cyan', 'sky', 'blue', 'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose', 'red', 'orange', 'amber', 'lime'];
+
+        const Icons = {
+            User: () => <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>,
+            Send: () => <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>,
+            Receive: () => <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>,
+            Paperclip: () => <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>,
+            Trash: () => <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>,
+            Check: () => <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="4" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>,
+            Settings: () => <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+            Sun: () => <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>,
+            Moon: () => <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>,
+            Download: () => <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>,
+            Plus: () => <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>,
+            Refresh: () => <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>,
+            QR: () => <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="5" y="5" width="3" height="3" rx="0.5"></rect><rect x="16" y="5" width="3" height="3" rx="0.5"></rect><rect x="16" y="16" width="3" height="3" rx="0.5"></rect><rect x="5" y="16" width="3" height="3" rx="0.5"></rect></svg>,
+            Scan: () => <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M7 3H5a2 2 0 0 0-2 2v2"></path><path d="M17 3h2a2 2 0 0 1 2 2v2"></path><path d="M7 21H5a2 2 0 0 1-2-2v-2"></path><path d="M17 21h2a2 2 0 0 0 2-2v-2"></path><line x1="7" y1="12" x2="17" y2="12"></line></svg>,
+            Close: () => <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>,
+            ArrowRight: () => <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+        };
+
+        const Button3D = ({ onClick, children, variant = 'primary', disabled = false, className = '', color = 'green' }) => {
+            const baseStyle = "font-bold font-rubik transition-all transform active:translate-y-1 active:border-b-0 border-b-4 flex justify-center items-center gap-2 rounded-2xl";
+            const variants = {
+                primary: `bg-${color}-500 text-white border-${color}-700 hover:bg-${color}-600`,
+                secondary: "bg-white text-gray-700 border-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700",
+                danger: "bg-red-500 text-white border-red-700 hover:bg-red-600",
+                disabled: "bg-gray-200 text-gray-400 border-gray-300 cursor-not-allowed dark:bg-gray-700 dark:border-gray-600 dark:text-gray-500"
+            };
+            return <button onClick={onClick} disabled={disabled} className={`${baseStyle} ${disabled ? variants.disabled : variants[variant]} ${className}`}>{children}</button>;
+        };
+
+        const formatBytes = (bytes) => {
+            if (bytes === 0) return '0 Bytes';
+            const sizes =['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(1024));
+            return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i];
+        };
+
+        const App = () => {
+            // استرجاع البيانات المحفوظة (Persisted State)
+            const[user, setUser] = useState(() => safeGetStorage('fsp_user', null));
+            const[friendsList, setFriendsList] = useState(() => safeGetStorage('fsp_friends',[]));
+            
+            const [nameInput, setNameInput] = useState('');
+            const [activeTab, setActiveTab] = useState('send'); 
+            const [previousTab, setPreviousTab] = useState('send');
+            
+            const[darkMode, setDarkMode] = useState(() => safeGetStorage('fsp_dark', false));
+            const[themeColor, setThemeColor] = useState(() => safeGetStorage('fsp_color', 'emerald'));
+
+            const [friendIdInput, setFriendIdInput] = useState('');
+            const [activeConnections, setActiveConnections] = useState({}); // تتبع الأصدقاء المتصلين حالياً
+            
+            const [selectedFiles, setSelectedFiles] = useState([]);
+            const [isUploading, setIsUploading] = useState(false);
+            const[uploadProgress, setUploadProgress] = useState(0);
+            
+            const [incomingRequests, setIncomingRequests] = useState([]);
+            const [isDownloading, setIsDownloading] = useState(false);
+            const[downloadProgress, setDownloadProgress] = useState(0);
+            const [downloadedFiles, setDownloadedFiles] = useState([]);
+
+            const [isQRModalOpen, setIsQRModalOpen] = useState(false);
+            const[isScannerOpen, setIsScannerOpen] = useState(false);
+            const [deferredPrompt, setDeferredPrompt] = useState(null);
+
+            const peerInstance = useRef(null);
+            const connections = useRef({});
+            const activeTransfers = useRef({}); 
+            const receiveBuffers = useRef({});  
+            const qrCodeRef = useRef(null);
+            
+            const filesRef = useRef([]);
+            useEffect(() => { filesRef.current = selectedFiles; }, [selectedFiles]);
+
+            // تسجيل الدخول التلقائي إذا كان الحساب محفوظاً
+            useEffect(() => {
+                if (user && !peerInstance.current) {
+                    initPeerConnection(user.id, user.username);
+                }
+            },[]);
+
+            // استقبال الملفات من زر المشاركة (Share Target)
+            useEffect(() => {
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.get('shared') === 'true') {
+                    const request = indexedDB.open('ShareTargetDB', 1);
+                    request.onsuccess = (e) => {
+                        const db = e.target.result;
+                        if (!db.objectStoreNames.contains('files')) return;
+                        const tx = db.transaction('files', 'readonly');
+                        const store = tx.objectStore('files');
+                        const getAll = store.getAll();
+                        
+                        getAll.onsuccess = () => {
+                            if (getAll.result && getAll.result.length > 0) {
+                                setSelectedFiles(prev =>[...prev, ...getAll.result]);
+                                setActiveTab('send'); // التبديل لصفحة الإرسال تلقائياً
+                                
+                                // مسح الملفات بعد تحميلها للتطبيق
+                                const txClear = db.transaction('files', 'readwrite');
+                                txClear.objectStore('files').clear();
+                            }
+                        };
+                    };
+                    // تنظيف الرابط بعد السحب
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                }
+            },[]);
+
+            // حفظ الأصدقاء في التخزين المحلي عند أي تغيير
+            useEffect(() => {
+                safeSetStorage('fsp_friends', friendsList);
+            }, [friendsList]);
+
+            const addFriendToSavedList = (id, username) => {
+                setFriendsList(prev => {
+                    if (prev.find(f => f.id === id)) return prev; // موجود مسبقاً
+                    return [...prev, { id, username }];
+                });
+            };
+
+            // زر التثبيت PWA
+            useEffect(() => {
+                const handleBeforeInstall = (e) => { e.preventDefault(); setDeferredPrompt(e); };
+                window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+                return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+            },[]);
+
+            const installApp = async () => {
+                if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    const { outcome } = await deferredPrompt.userChoice;
+                    if (outcome === 'accepted') setDeferredPrompt(null);
+                }
+            };
+
+            // تطبيق السمة (Theme)
+            useEffect(() => { 
+                safeSetStorage('fsp_dark', darkMode);
+                safeSetStorage('fsp_color', themeColor);
+                
+                const root = document.documentElement;
+                const metaThemeColor = document.getElementById('meta-theme-color');
+                
+                if (darkMode) {
+                    root.classList.add('dark');
+                    if(metaThemeColor) metaThemeColor.setAttribute('content', '#111827');
+                } else {
+                    root.classList.remove('dark');
+                    if(metaThemeColor) metaThemeColor.setAttribute('content', '#f9fafb');
+                }
+            }, [darkMode, themeColor]);
+
+            const initPeerConnection = (code, username) => {
+                if(peerInstance.current) peerInstance.current.destroy(); 
+
+                const peer = new Peer(code, { debug: 2 });
+                
+                peer.on('open', (id) => {
+                    const newUser = { id, username };
+                    setUser(newUser);
+                    safeSetStorage('fsp_user', newUser); // حفظ المستخدم ليفتح تلقائياً في المرة القادمة
+                    connections.current = {};
+                    setActiveConnections({});
+                });
+
+                peer.on('connection', (conn) => {
+                    setupConnectionEvents(conn);
+                });
+
+                peer.on('error', (err) => {
+                    console.error(err);
+                    alert("خطأ في الاتصال. تأكد من جودة الإنترنت.");
+                });
+
+                peerInstance.current = peer;
+            };
+
+            const handleLogin = () => {
+                if (!nameInput.trim()) return;
+                initPeerConnection(generateShortID(), nameInput.trim());
+            };
+
+            const regenerateCode = () => {
+                if(!user) return;
+                if(confirm("هل أنت متأكد من تغيير الكود؟ سيتغير الـ ID الخاص بك.")){
+                    initPeerConnection(generateShortID(), user.username);
+                }
+            };
+
+            const setupConnectionEvents = (conn) => {
+                conn.on('open', () => {
+                    conn.send({ type: 'hello', username: user?.username || 'مستخدم', senderId: user?.id });
+                    connections.current[conn.peer] = conn;
+                    setActiveConnections(prev => ({...prev, [conn.peer]: true}));
+                });
+
+                conn.on('data', async (data) => {
+                    if (data.type === 'hello') {
+                        addFriendToSavedList(conn.peer, data.username);
+                    } 
+                    else if (data.type === 'request') {
+                        setIncomingRequests(prev =>[...prev, data]);
+                        if(activeTab !== 'receive') alert(`طلب إرسال ملفات من ${data.sender_name}`);
+                    } 
+                    else if (data.type === 'response') {
+                        if (data.status === 'accepted') startSendingChunks(data.transferId, conn);
+                        else { setIsUploading(false); alert("الطرف الآخر رفض الاستلام"); }
+                    } 
+                    else if (data.type === 'chunk') {
+                        handleReceiveChunk(data, conn);
+                    } 
+                    else if (data.type === 'ack') {
+                        sendNextChunk(data.transferId, conn);
+                    }
+                });
+                
+                conn.on('close', () => {
+                    delete connections.current[conn.peer];
+                    setActiveConnections(prev => { const n = {...prev}; delete n[conn.peer]; return n; });
+                });
+            };
+
+            const connectToFriend = () => {
+                if(!friendIdInput.trim() || !peerInstance.current) return;
+                const peerId = friendIdInput.trim().toUpperCase();
+                if(peerId === user.id) return alert("لا يمكنك الاتصال بنفسك!");
+                
+                const conn = peerInstance.current.connect(peerId);
+                setupConnectionEvents(conn);
+                // نضيفه مبدئياً كصديق (سيتم تحديث الاسم عند استقبال رسالة hello)
+                addFriendToSavedList(peerId, "صديق جديد");
+                setFriendIdInput('');
+            };
+
+            // دالة الإرسال الذكية (تتصل أولاً إذا لم يكن متصلاً)
+            const handleSendClick = (friendId) => {
+                if (filesRef.current.length === 0) return alert("اختر ملفات أولاً");
+                
+                if (connections.current[friendId] && connections.current[friendId].open) {
+                    sendFilesToUser(friendId);
+                } else {
+                    // لم يكن متصلاً، نتصل به الآن ثم نرسل
+                    alert("جاري الاتصال بالصديق، سيتم الإرسال فوراً...");
+                    const conn = peerInstance.current.connect(friendId);
+                    setupConnectionEvents(conn);
+                    conn.on('open', () => {
+                        setTimeout(() => sendFilesToUser(friendId), 500); // ننتظر قليلاً ليتم التعارف
+                    });
+                    conn.on('error', () => alert("فشل الاتصال بالصديق. تأكد أنه فاتح التطبيق."));
+                }
+            };
+
+            const sendFilesToUser = (receiverId) => {
+                const conn = connections.current[receiverId];
+                if (!conn) return;
+
+                const totalSize = filesRef.current.reduce((acc, file) => acc + file.size, 0);
+                const transferId = generateShortID();
+                const filesMeta = filesRef.current.map(f => ({ name: f.name, size: f.size, type: f.type }));
+
+                activeTransfers.current[transferId] = {
+                    files: [...filesRef.current], currentFileIndex: 0, currentOffset: 0, totalSize: totalSize, sentBytes: 0
+                };
+
+                setIsUploading(true);
+                setUploadProgress(0);
+
+                conn.send({
+                    type: 'request', transferId, senderId: user.id, sender_name: user.username, total_size: totalSize, files_meta: filesMeta
+                });
+            };
+
+            // باقي دوال الـ PeerJS والماسح
+            useEffect(() => {
+                let scanner = null;
+                if (isScannerOpen) {
+                    scanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250}, aspectRatio: 1.0 }, false);
+                    scanner.render((decodedText) => {
+                        setFriendIdInput(decodedText.trim().toUpperCase());
+                        setIsScannerOpen(false); 
+                        scanner.clear();
+                    }, () => {});
+                }
+                return () => { if (scanner) scanner.clear().catch(e => console.error(e)); };
+            },[isScannerOpen]);
+
+            useEffect(() => {
+                if (isQRModalOpen && qrCodeRef.current && user) {
+                    qrCodeRef.current.innerHTML = "";
+                    new QRCode(qrCodeRef.current, {
+                        text: user.id, width: 200, height: 200,
+                        colorDark : darkMode ? "#ffffff" : "#000000",
+                        colorLight : darkMode ? "#1f2937" : "#ffffff", 
+                        correctLevel : QRCode.CorrectLevel.H
+                    });
+                }
+            }, [isQRModalOpen, user, darkMode]);
+
+            const handleTriggerFileSelect = () => {
+                const fileInput = document.getElementById('hidden-file-input');
+                if (fileInput) fileInput.click();
+            };
+
+            const handleFileSelect = (e) => {
+                const files = Array.from(e.target.files ||[]);
+                if (files.length > 0) setSelectedFiles(prev => [...prev, ...files]);
+                e.target.value = '';
+            };
+
+            const removeFile = (index) => setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+
+            const CHUNK_SIZE = 128 * 1024;
+            const startSendingChunks = (transferId, conn) => sendNextChunk(transferId, conn); 
+            const sendNextChunk = async (transferId, conn) => {
+                const transfer = activeTransfers.current[transferId];
+                if (!transfer) return;
+
+                const file = transfer.files[transfer.currentFileIndex];
+                const slice = file.slice(transfer.currentOffset, transfer.currentOffset + CHUNK_SIZE);
+                const buffer = await slice.arrayBuffer();
+
+                const isLastChunk = (transfer.currentOffset + buffer.byteLength) >= file.size;
+                const isLastFile = isLastChunk && (transfer.currentFileIndex === transfer.files.length - 1);
+
+                conn.send({
+                    type: 'chunk', transferId, fileIndex: transfer.currentFileIndex, offset: transfer.currentOffset,
+                    data: buffer, fileName: file.name, fileType: file.type, isLastChunk, isLastFile
+                });
+
+                transfer.currentOffset += buffer.byteLength;
+                transfer.sentBytes += buffer.byteLength;
+                setUploadProgress(Math.round((transfer.sentBytes / transfer.totalSize) * 100));
+
+                if (isLastChunk) { transfer.currentFileIndex++; transfer.currentOffset = 0; }
+                if (isLastFile) {
+                    setTimeout(() => { setIsUploading(false); setSelectedFiles([]); delete activeTransfers.current[transferId]; alert("تم الإرسال بنجاح!"); }, 500);
+                }
+            };
+
+            const acceptTransfer = (req) => {
+                const conn = connections.current[req.senderId] || Object.values(connections.current)[0]; 
+                addFriendToSavedList(req.senderId, req.sender_name); // حفظ كصديق
+
+                setIncomingRequests(prev => prev.filter(r => r.transferId !== req.transferId));
+                setIsDownloading(true); setDownloadProgress(0); setDownloadedFiles([]);
+                receiveBuffers.current[req.transferId] = { totalSize: req.total_size, receivedBytes: 0, filesData: [], urls:[] };
+                conn.send({ type: 'response', transferId: req.transferId, status: 'accepted' });
+            };
+
+            const rejectTransfer = (req) => {
+                const conn = connections.current[req.senderId] || Object.values(connections.current)[0];
+                setIncomingRequests(prev => prev.filter(r => r.transferId !== req.transferId));
+                conn.send({ type: 'response', transferId: req.transferId, status: 'rejected' });
+            };
+
+            const handleReceiveChunk = (data, conn) => {
+                const transfer = receiveBuffers.current[data.transferId];
+                if (!transfer) return;
+
+                if (!transfer.filesData[data.fileIndex]) transfer.filesData[data.fileIndex] = [];
+                transfer.filesData[data.fileIndex].push(data.data);
+                transfer.receivedBytes += data.data.byteLength;
+                setDownloadProgress(Math.round((transfer.receivedBytes / transfer.totalSize) * 100));
+
+                conn.send({ type: 'ack', transferId: data.transferId });
+
+                if (data.isLastChunk) {
+                    const blob = new Blob(transfer.filesData[data.fileIndex], { type: data.fileType });
+                    transfer.urls.push({ name: data.fileName, url: URL.createObjectURL(blob) });
+                }
+
+                if (data.isLastFile) {
+                    setTimeout(() => {
+                        const finalFiles =[...transfer.urls];
+                        setDownloadedFiles(finalFiles);
+                        delete receiveBuffers.current[data.transferId];
+                        
+                        finalFiles.forEach(file => {
+                            const a = document.createElement('a');
+                            a.href = file.url; a.download = file.name;
+                            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                        });
+                        setTimeout(() => setIsDownloading(false), 2000);
+                    }, 500);
+                }
+            };
+
+            const saveFilesLocally = () => {
+                downloadedFiles.forEach(file => {
+                    const a = document.createElement('a'); a.href = file.url; a.download = file.name;
+                    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                });
+                setIsDownloading(false); setDownloadedFiles([]);
+            };
+
+            const openSettings = () => { setPreviousTab(activeTab); setActiveTab('settings'); };
+            const goBackFromSettings = () => { setActiveTab(previousTab); };
+            const removeFriend = (id) => { setFriendsList(prev => prev.filter(f => f.id !== id)); };
+
+            if (!user) {
+                return (
+                    <div className="flex h-screen w-full items-center justify-center p-6 bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+                        <div className="w-full max-w-sm text-center animate-fade">
+                            <div className="flex justify-center mb-6 relative">
+                                <img src="https://cdn-icons-png.flaticon.com/512/19038/19038172.png" className="w-24 h-24 rounded-3xl shadow-xl border-4 border-white dark:border-gray-800 bg-white p-2" />
+                            </div>
+                            <h1 className={`text-3xl font-black mb-2 text-${themeColor}-500`}>Flash Share</h1>
+                            <p className="text-gray-500 font-bold mb-8 text-sm">اتصال P2P مباشر بدون سيرفرات</p>
+                            
+                            <div className="bg-white dark:bg-gray-800 p-6 rounded-3xl shadow-sm border-2 border-gray-100 dark:border-gray-700">
+                                <input 
+                                    type="text" value={nameInput} onChange={(e) => setNameInput(e.target.value)}
+                                    placeholder="اكتب اسمك للظهور..."
+                                    className="w-full text-center p-4 rounded-2xl bg-gray-50 dark:bg-gray-900 border-2 border-gray-200 dark:border-gray-700 outline-none font-bold text-gray-800 dark:text-white mb-6"
+                                />
+                                <Button3D onClick={handleLogin} disabled={!nameInput.trim()} color={themeColor} className="w-full py-4 text-lg mb-3">دخول التطبيق</Button3D>
+                                {deferredPrompt && (
+                                    <button onClick={installApp} className={`w-full py-3 text-sm font-bold text-${themeColor}-600 bg-${themeColor}-50 hover:bg-${themeColor}-100 dark:bg-gray-700 dark:text-white rounded-xl transition-colors border border-${themeColor}-200 dark:border-gray-600 flex items-center justify-center gap-2`}><Icons.Download /> تثبيت التطبيق على الجهاز</button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="flex flex-col h-screen w-full bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 font-rubik overflow-hidden relative">
+                    
+                    {isQRModalOpen && (
+                        <div className="absolute inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade">
+                            <div className="bg-white dark:bg-gray-800 p-6 rounded-3xl w-full max-w-xs text-center shadow-2xl border-2 border-gray-200 dark:border-gray-700 relative">
+                                <button onClick={() => setIsQRModalOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-red-500"><Icons.Close /></button>
+                                <h3 className="font-black text-lg mb-2 mt-4">امسح الكود للاتصال</h3>
+                                <p className="text-xs text-gray-500 mb-6 font-bold">دع صديقك يمسح هذا الكود للاتصال بك فوراً</p>
+                                <div className="flex justify-center bg-white dark:bg-gray-800 p-4 rounded-2xl border-2 border-gray-100 dark:border-gray-700 mb-4">
+                                    <div ref={qrCodeRef}></div>
+                                </div>
+                                <div className={`text-${themeColor}-500 font-black text-2xl tracking-widest`}>{user.id}</div>
+                            </div>
+                        </div>
+                    )}
+
+                    {isScannerOpen && (
+                        <div className="absolute inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade">
+                            <div className="bg-white dark:bg-gray-800 p-4 rounded-3xl w-full max-w-sm text-center shadow-2xl relative">
+                                <button onClick={() => setIsScannerOpen(false)} className="absolute top-4 right-4 z-10 bg-white dark:bg-gray-800 rounded-full p-1 text-red-500 shadow-md"><Icons.Close /></button>
+                                <h3 className="font-black text-lg mb-4 mt-2">وجّه الكاميرا نحو كود صديقك</h3>
+                                <div id="reader" className="w-full bg-gray-100 dark:bg-gray-900 rounded-2xl mb-2"></div>
+                            </div>
+                        </div>
+                    )}
+
+                    <header className="p-5 flex items-center justify-between bg-white dark:bg-gray-800 border-b-2 border-gray-200 dark:border-gray-700 shadow-sm shrink-0 z-10">
+                        <div className="flex items-center gap-3">
+                            <div className={`w-12 h-12 rounded-2xl bg-${themeColor}-100 dark:bg-${themeColor}-900 flex items-center justify-center text-${themeColor}-500 border-2 border-${themeColor}-200 dark:border-${themeColor}-800 relative`}>
+                                <img src="https://cdn-icons-png.flaticon.com/512/19038/19038172.png" className="w-8 h-8 object-contain" />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <p className="text-xs font-black text-gray-400 uppercase">كودك: <span className={`text-${themeColor}-500 select-all font-black text-sm`}>{user.id}</span></p>
+                                    <button onClick={regenerateCode} className="text-gray-400 hover:text-gray-700 dark:hover:text-white transition-colors" title="تغيير الكود"><Icons.Refresh /></button>
+                                    <button onClick={() => setIsQRModalOpen(true)} className="text-blue-500 hover:text-blue-600 transition-colors" title="عرض QR Code"><Icons.QR /></button>
+                                </div>
+                                <h2 className="text-lg font-black leading-none mt-1">{user.username}</h2>
+                            </div>
+                        </div>
+                        {activeTab !== 'settings' && <Button3D variant="secondary" onClick={openSettings} className="p-3"><Icons.Settings /></Button3D>}
+                    </header>
+
+                    <main className="flex-1 overflow-y-auto p-4 pb-28">
+                        {activeTab === 'send' && (
+                            <div className="space-y-6 max-w-xl mx-auto animate-fade">
+                                <div className="bg-white dark:bg-gray-800 rounded-3xl p-5 border-2 border-gray-200 dark:border-gray-700">
+                                    <h3 className="text-sm font-black text-gray-400 mb-4">الملفات المراد إرسالها</h3>
+                                    <input type="file" multiple id="hidden-file-input" onChange={handleFileSelect} style={{ display: 'none' }} />
+                                    {selectedFiles.length === 0 ? (
+                                        <div className="text-center py-6">
+                                            <Button3D variant="secondary" onClick={handleTriggerFileSelect} className="w-full py-4 bg-gray-50 dark:bg-gray-700"><Icons.Paperclip /> اختر ملفات من جهازك</Button3D>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3 mb-4 max-h-48 overflow-y-auto">
+                                            {selectedFiles.map((f, i) => (
+                                                <div key={i} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-2xl border-2 border-gray-100 dark:border-gray-700">
+                                                    <div className="truncate flex-1 font-bold text-sm">{f.name} <span className="text-gray-400 text-xs block">{formatBytes(f.size)}</span></div>
+                                                    <button onClick={() => removeFile(i)} className="text-red-500 p-2"><Icons.Trash /></button>
+                                                </div>
+                                            ))}
+                                            <div className="pt-2 flex gap-2">
+                                                <Button3D variant="secondary" onClick={handleTriggerFileSelect} className="flex-1 py-3 text-sm">إضافة المزيد</Button3D>
+                                                <Button3D variant="danger" onClick={() => setSelectedFiles([])} className="flex-1 py-3 text-sm">مسح الكل</Button3D>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {isUploading && (
+                                    <div className="bg-white dark:bg-gray-800 rounded-3xl p-5 border-2 border-gray-200 dark:border-gray-700 text-center">
+                                        <h3 className="text-sm font-black text-gray-500 mb-3">جاري إرسال الملفات...</h3>
+                                        <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-4 overflow-hidden mb-2">
+                                            <div className={`bg-${themeColor}-500 h-4 rounded-full transition-all duration-200`} style={{ width: `${uploadProgress}%` }}></div>
+                                        </div>
+                                        <span className="font-bold text-sm">{uploadProgress}%</span>
+                                    </div>
+                                )}
+
+                                <div className="bg-white dark:bg-gray-800 rounded-3xl p-5 border-2 border-gray-200 dark:border-gray-700">
+                                    <h3 className="text-sm font-black text-gray-400 mb-4">الأصدقاء </h3>
+                                    
+                                    <div className="flex gap-2 mb-4 border-b-2 border-gray-100 dark:border-gray-700 pb-4">
+                                        <Button3D variant="secondary" onClick={() => setIsScannerOpen(true)} className="px-4 text-blue-500"><Icons.Scan /></Button3D>
+                                        <input type="text" value={friendIdInput} onChange={(e) => setFriendIdInput(e.target.value)} placeholder="أدخل كود الصديق..." className="flex-1 text-center p-3 rounded-2xl bg-gray-50 dark:bg-gray-900 border-2 border-gray-200 dark:border-gray-700 outline-none font-bold text-sm uppercase w-full"/>
+                                        <Button3D onClick={connectToFriend} disabled={!friendIdInput.trim()} color={themeColor} className="px-4"><Icons.Plus /></Button3D>
+                                    </div>
+
+                                    {friendsList.length === 0 ? (
+                                        <div className="text-center py-4">
+                                            <p className="font-bold text-gray-400 text-sm">لا يوجد أصدقاء محفوظين.<br/>أضف كود صديقك أو امسح الـ QR الخاص به</p>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {friendsList.map(friend => {
+                                                const isOnline = activeConnections[friend.id];
+                                                return (
+                                                <div key={friend.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-2xl border-2 border-gray-100 dark:border-gray-700">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="relative">
+                                                            <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center"><Icons.User /></div>
+                                                            <div className={`absolute bottom-0 right-0 w-3 h-3 ${isOnline ? 'bg-green-500' : 'bg-gray-400'} border-2 border-white dark:border-gray-900 rounded-full`}></div>
+                                                        </div>
+                                                        <div>
+                                                            <span className="font-bold block text-sm flex items-center gap-2">
+                                                                {friend.username}
+                                                            </span>
+                                                            <span className="text-xs text-gray-400">{friend.id}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <Button3D onClick={() => handleSendClick(friend.id)} disabled={selectedFiles.length === 0 || isUploading} color={themeColor} className="px-4 py-2 text-sm">إرسال</Button3D>
+                                                        <button onClick={() => removeFriend(friend.id)} className="text-red-400 hover:text-red-600 p-2"><Icons.Trash /></button>
+                                                    </div>
+                                                </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'receive' && (
+                            <div className="space-y-6 max-w-xl mx-auto animate-fade">
+                                <div className="bg-white dark:bg-gray-800 rounded-3xl p-5 border-2 border-gray-200 dark:border-gray-700">
+                                    <h3 className="text-sm font-black text-gray-400 mb-4">الطلبات الواردة</h3>
+                                    {incomingRequests.length === 0 && !isDownloading && downloadedFiles.length === 0 ? (
+                                        <div className="text-center py-10 font-bold text-gray-400">لا توجد طلبات. شارك الـ QR الخاص بك مع صديق.</div>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            {incomingRequests.map((req, i) => (
+                                                <div key={i} className={`p-4 rounded-2xl bg-${themeColor}-50 dark:bg-${themeColor}-900/30 border-2 border-${themeColor}-200 dark:border-${themeColor}-800`}>
+                                                    <p className="font-bold mb-2">إرسال جديد من <span className={`text-${themeColor}-500`}>{req.sender_name}</span></p>
+                                                    <div className="bg-white dark:bg-gray-800 p-3 rounded-xl mb-4 text-sm font-bold text-gray-500">
+                                                        <p className="mb-1 text-gray-800 dark:text-gray-200">العدد: {req.files_meta.length} ملفات</p>
+                                                        <p>الحجم: {formatBytes(req.total_size)}</p>
+                                                        <p className="truncate mt-1 text-xs">{req.files_meta.map(m => m.name).join(', ')}</p>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <Button3D onClick={() => acceptTransfer(req)} color={themeColor} className="flex-1 py-3">استلام</Button3D>
+                                                        <Button3D variant="secondary" onClick={() => rejectTransfer(req)} className="flex-1 py-3 text-red-500">رفض</Button3D>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {isDownloading && downloadedFiles.length === 0 && (
+                                    <div className="bg-white dark:bg-gray-800 rounded-3xl p-6 border-2 border-gray-200 dark:border-gray-700 text-center">
+                                        <h3 className="text-lg font-black mb-4">جاري الاستلام والتنزيل...</h3>
+                                        <div className="text-3xl font-black mb-2 text-blue-500">{downloadProgress}%</div>
+                                        <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+                                            <div className="bg-blue-500 h-3 rounded-full transition-all duration-200" style={{ width: `${downloadProgress}%` }}></div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {downloadedFiles.length > 0 && (
+                                    <div className="bg-green-50 dark:bg-green-900/20 rounded-3xl p-6 border-2 border-green-200 dark:border-green-800 text-center">
+                                        <div className="w-16 h-16 bg-green-500 text-white rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-green-200"><Icons.Check /></div>
+                                        <h3 className="text-xl font-black text-green-700 dark:text-green-400 mb-2">اكتمل التنزيل!</h3>
+                                        <p className="text-sm text-green-600 mb-6 font-bold">تم تحميل الملفات تلقائياً في جهازك.</p>
+                                        <Button3D onClick={saveFilesLocally} color="green" className="w-full py-4 text-lg"><Icons.Download /> إعادة التحميل اليدوي</Button3D>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {activeTab === 'settings' && (
+                            <div className="space-y-6 max-w-xl mx-auto bg-white dark:bg-gray-800 p-6 rounded-3xl border-2 border-gray-200 dark:border-gray-700 animate-fade">
+                                <div className="flex items-center gap-3 mb-6 pb-4 border-b-2 border-gray-100 dark:border-gray-700">
+                                    <button onClick={goBackFromSettings} className={`p-2 bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-300 rounded-xl hover:bg-${themeColor}-100 hover:text-${themeColor}-600 transition-colors`}><Icons.ArrowRight /></button>
+                                    <h2 className="text-2xl font-black">الإعدادات</h2>
+                                </div>
+                                <h2 className="text-lg font-black mb-4">المظهر (ليلي / نهاري)</h2>
+                                <div className="bg-gray-50 dark:bg-gray-900 p-2 rounded-2xl flex gap-2 border-2 border-gray-100 dark:border-gray-700 mb-8">
+                                    <Button3D onClick={() => setDarkMode(false)} variant={!darkMode ? 'primary' : 'secondary'} color={themeColor} className="flex-1 py-3 text-sm"><Icons.Sun /> نهاري</Button3D>
+                                    <Button3D onClick={() => setDarkMode(true)} variant={darkMode ? 'primary' : 'secondary'} color={themeColor} className="flex-1 py-3 text-sm"><Icons.Moon /> ليلي</Button3D>
+                                </div>
+                                <h2 className="text-lg font-black mb-4">ألوان التطبيق (16 لون)</h2>
+                                <div className="grid grid-cols-4 gap-3 p-4 bg-gray-50 dark:bg-gray-900 rounded-3xl border-2 border-gray-100 dark:border-gray-700 mb-8">
+                                    {THEME_COLORS.map((color) => (
+                                        <button key={color} onClick={() => setThemeColor(color)} 
+                                            className={`aspect-square rounded-2xl flex items-center justify-center transition-all transform active:scale-95 bg-${color}-500 border-b-4 border-${color}-700 shadow-sm ${themeColor === color ? `scale-110 ring-4 ring-${color}-500 dark:ring-${color}-500 z-10` : ''}`}>
+                                            {themeColor === color && <div className="text-white"><Icons.Check /></div>}
+                                        </button>
+                                    ))}
+                                </div>
+                                {deferredPrompt && <Button3D onClick={installApp} color={themeColor} className="w-full py-4 text-lg"><Icons.Download /> تثبيت التطبيق على جهازي</Button3D>}
+                            </div>
+                        )}
+                    </main>
+
+                    {activeTab !== 'settings' && (
+                        <nav className="absolute bottom-0 w-full bg-white dark:bg-gray-800 border-t-2 border-gray-200 dark:border-gray-700 px-4 pb-6 pt-3 z-50 rounded-t-3xl shadow-[0_-10px_20px_rgba(0,0,0,0.05)]">
+                            <div className="max-w-xl mx-auto flex gap-6">
+                                <Button3D onClick={() => setActiveTab('receive')} variant={activeTab === 'receive' ? 'primary' : 'secondary'} color={themeColor} className="flex-1 py-3 flex-col gap-1 text-sm relative border-b-4">
+                                    <Icons.Receive /> Receive
+                                    {incomingRequests.length > 0 && <span className="absolute top-2 right-2 flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span></span>}
+                                </Button3D>
+                                <Button3D onClick={() => setActiveTab('send')} variant={activeTab === 'send' ? 'primary' : 'secondary'} color={themeColor} className="flex-1 py-3 flex-col gap-1 text-sm relative border-b-4">
+                                    <Icons.Send /> Send
+                                    {selectedFiles.length > 0 && <span className={`absolute top-2 left-2 bg-${themeColor}-600 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full border-2 border-white`}>{selectedFiles.length}</span>}
+                                </Button3D>
+                            </div>
+                        </nav>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<ErrorBoundary><App /></ErrorBoundary>);
+    </script>
+</body>
+</html>
